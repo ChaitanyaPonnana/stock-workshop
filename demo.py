@@ -11,8 +11,8 @@ CSV_FILE = "registrations.csv"
 WHATSAPP_LINK = "https://chat.whatsapp.com/KpkyyyevxqmFOnkaZUsTo2?mode=ac_t"
 
 # Email config - replace with your credentials
-EMAIL_ADDRESS = "your_email@gmail.com"
-EMAIL_PASSWORD = "your_app_password"  # Use app password if 2FA enabled
+EMAIL_ADDRESS = "chaitanyapoannana235@gmail.com"
+EMAIL_PASSWORD = "Chaitu@756"  # Use app password if 2FA enabled
 
 # --------- FUNCTIONS ---------
 def send_confirmation_email(to_email, name):
