@@ -11,9 +11,16 @@ CSV_FILE = "registrations.csv"
 WHATSAPP_LINK = "https://chat.whatsapp.com/KpkyyyevxqmFOnkaZUsTo2?mode=ac_t"
 QR_CODE_IMAGE = "screenshots/QR-CODE.jpg"
 
-# Replace these with actual working credentials
 EMAIL_ADDRESS = "your_email@gmail.com"
 EMAIL_PASSWORD = "your_app_password"  # Use app password if 2FA is enabled
+
+# --------- INITIALIZE FILE ---------
+if not os.path.exists(CSV_FILE):
+    df_init = pd.DataFrame(columns=[
+        "Name", "Email", "Phone", "College", "Branch", "Year",
+        "Timestamp", "Payment Screenshot"
+    ])
+    df_init.to_csv(CSV_FILE, index=False)
 
 # --------- FUNCTIONS ---------
 def send_confirmation_email(to_email, name):
@@ -45,10 +52,7 @@ Workshop Team"""
 
 def save_registration(data: dict):
     df = pd.DataFrame([data])
-    if os.path.exists(CSV_FILE):
-        df.to_csv(CSV_FILE, mode='a', header=False, index=False)
-    else:
-        df.to_csv(CSV_FILE, mode='w', header=True, index=False)
+    df.to_csv(CSV_FILE, mode='a', header=False, index=False)
 
 def get_registration_count():
     if os.path.exists(CSV_FILE):
@@ -74,10 +78,17 @@ with st.form(key='registration_form'):
     email = st.text_input("Email Address")
     phone = st.text_input("Phone Number")
 
-    college = st.selectbox("College / Institution", [
+    college_selection = st.selectbox("College / Institution", [
         "ANIL NEERUKONDA INSTITUTE OF TECHNOLOGY AND SCIENCES", "OTHER"
     ])
-    
+
+    # Show textbox if college is "OTHER"
+    if college_selection == "OTHER":
+        other_college = st.text_input("Enter your College Name")
+        college = other_college if other_college else "Not Provided"
+    else:
+        college = college_selection
+
     branch = st.selectbox("Branch", [
         "CSE", "CSD", "CSM", "ECE", "EEE", "MEC", "CIVIL", "CHEMICAL", "OTHER"
     ])
