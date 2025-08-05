@@ -1,109 +1,111 @@
 import streamlit as st
-from streamlit_oauth import OAuth2Component
-import requests
 import pandas as pd
+import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
-# ------------------- CONFIG -------------------
-API_KEY = "YOUR_ALPHA_VANTAGE_API_KEY"
-client_id = "YOUR_GOOGLE_CLIENT_ID"
-client_secret = "YOUR_GOOGLE_CLIENT_SECRET"
-redirect_uri = "http://localhost:8501"  # or your Streamlit Cloud URL
+# --------- CONFIGURATION ---------
+CSV_FILE = "registrations.csv"
+WHATSAPP_LINK = "https://chat.whatsapp.com/KpkyyyevxqmFOnkaZUsTo2?mode=ac_t"
 
-# ------------------- STOCKS -------------------
-stocks = {
-    "Tata Motors": "TATAMOTORS.NS",
-    "Tata Steel": "TATASTEEL.NS",
-    "Reliance": "RELIANCE.NS",
-    "Garuda (mock)": None,
-    "Vishal Mega Mart (mock)": None
-}
+# Email config - replace with your credentials
+EMAIL_ADDRESS = "your_email@gmail.com"
+EMAIL_PASSWORD = "your_app_password"  # Use app password if 2FA enabled
 
-# ------------------- GOOGLE AUTH -------------------
-oauth = OAuth2Component(
-    client_id=client_id,
-    client_secret=client_secret,
-    authorize_endpoint="https://accounts.google.com/o/oauth2/auth",
-    token_endpoint="https://oauth2.googleapis.com/token",
-    revoke_endpoint="https://oauth2.googleapis.com/revoke",
-)
+# --------- FUNCTIONS ---------
+def send_confirmation_email(to_email, name):
+    subject = "Workshop Registration Confirmation"
+    body = f"""
+    Hi {name},
 
-def fetch_stock_data(symbol):
-    base_url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "TIME_SERIES_DAILY_ADJUSTED",
-        "symbol": symbol,
-        "outputsize": "compact",
-        "apikey": API_KEY
-    }
-    response = requests.get(base_url, params=params)
-    data = response.json()
+    Thank you for registering for the Stock Market Workshop.
+
+    We have received your registration successfully.
+
+    Regards,
+    Workshop Team
+    """
+
+    msg = MIMEMultipart()
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = to_email
+    msg['Subject'] = subject
+
+    msg.attach(MIMEText(body, 'plain'))
+
     try:
-        timeseries = data["Time Series (Daily)"]
-        df = pd.DataFrame.from_dict(timeseries, orient="index", dtype=float)
-        df = df.rename(columns={
-            "1. open": "Open",
-            "2. high": "High",
-            "3. low": "Low",
-            "4. close": "Close",
-            "5. adjusted close": "Adj Close",
-            "6. volume": "Volume"
-        })
-        df.index = pd.to_datetime(df.index)
-        df.sort_index(inplace=True)
-        return df
-    except KeyError:
-        return None
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Error sending email: {e}")
+        return False
 
-# ------------------- STREAMLIT UI -------------------
-st.set_page_config(page_title="📊 Stock Workshop Dashboard")
-st.title("📈 Stock Market Workshop Dashboard")
-
-# ------------------- LOGIN HANDLING -------------------
-if "token" not in st.session_state:
-    result = oauth.authorize_button(
-        name="Continue with Google",
-        icon="🌐",
-        redirect_uri=redirect_uri,
-        scope="openid email profile",
-        key="google",
-    )
-    if result:
-        st.session_state.token = result["token"]
-        st.rerun()
-else:
-    # Get user info
-    user_info = requests.get(
-        "https://www.googleapis.com/oauth2/v1/userinfo",
-        headers={"Authorization": f"Bearer {st.session_state.token['access_token']}"},
-    ).json()
-
-    st.success(f"Welcome, {user_info['name']} ({user_info['email']})")
-
-    if st.button("Logout"):
-        del st.session_state["token"]
-        st.rerun()
-
-    # ------------------- DASHBOARD -------------------
-    st.header("📊 Select a Stock")
-    stock_choice = st.selectbox("Choose Stock", list(stocks.keys()))
-    symbol = stocks[stock_choice]
-
-    if symbol:
-        data = fetch_stock_data(symbol)
-        if data is not None:
-            st.subheader(f"{stock_choice} - Adjusted Close Prices")
-            st.line_chart(data['Adj Close'])
-            st.subheader("📅 Recent 10 Days Data")
-            st.dataframe(data.tail(10))
-        else:
-            st.error("⚠️ Failed to fetch data. Check API key or API limit.")
+def save_registration(data: dict):
+    df = pd.DataFrame([data])
+    if os.path.exists(CSV_FILE):
+        df.to_csv(CSV_FILE, mode='a', header=False, index=False)
     else:
-        st.warning(f"{stock_choice} not available in Alpha Vantage. Showing mock data.")
-        mock_data = pd.DataFrame({
-            "Date": pd.date_range(end=datetime.today(), periods=10),
-            "Price": [100 + i * 2 for i in range(10)]
-        })
-        mock_data.set_index("Date", inplace=True)
-        st.line_chart(mock_data["Price"])
-        st.dataframe(mock_data)
+        df.to_csv(CSV_FILE, mode='w', header=True, index=False)
+
+def get_registration_count():
+    if os.path.exists(CSV_FILE):
+        df = pd.read_csv(CSV_FILE)
+        return len(df)
+    return 0
+
+# --------- STREAMLIT UI ---------
+st.title("📈 Stock Market Workshop Registration")
+
+st.markdown("Please fill the form below to register for the workshop.")
+
+with st.form(key='registration_form'):
+    name = st.text_input("Full Name", max_chars=50)
+    email = st.text_input("Email Address")
+    phone = st.text_input("Phone Number")
+    college = st.text_input("College Name")
+    branch = st.text_input("Branch")
+    year = st.selectbox("Year", ["1st Year", "2nd Year", "3rd Year", "4th Year", "Other"])
+    submit = st.form_submit_button("Register")
+
+if submit:
+    if not (name and email and phone and college and branch and year):
+        st.error("Please fill all fields before submitting.")
+    else:
+        registration_data = {
+            "Name": name,
+            "Email": email,
+            "Phone": phone,
+            "College": college,
+            "Branch": branch,
+            "Year": year,
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        save_registration(registration_data)
+        email_sent = send_confirmation_email(email, name)
+        if email_sent:
+            st.success("Registration successful! A confirmation email has been sent.")
+        else:
+            st.warning("Registration saved but failed to send confirmation email.")
+
+st.markdown("---")
+st.markdown(f"### Total Registered Participants: {get_registration_count()}")
+
+st.markdown("### Upload Payment Screenshot")
+uploaded_file = st.file_uploader("Upload your payment screenshot here (PNG/JPG)")
+
+if uploaded_file is not None:
+    # Save the uploaded file to local 'screenshots' folder (create if not exists)
+    if not os.path.exists("screenshots"):
+        os.makedirs("screenshots")
+    save_path = os.path.join("screenshots", uploaded_file.name)
+    with open(save_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    st.success("Payment screenshot uploaded successfully!")
+
+    # Reveal WhatsApp group link
+    st.markdown(f"**Join the WhatsApp group here:** [Click to Join]({WHATSAPP_LINK})")
