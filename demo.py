@@ -82,10 +82,14 @@ with st.form(key='registration_form'):
         "ANIL NEERUKONDA INSTITUTE OF TECHNOLOGY AND SCIENCES", "OTHER"
     ])
 
-    # Show textbox if college is "OTHER"
+    # Show textboxes if college is "OTHER"
     if college_selection == "OTHER":
-        other_college = st.text_input("Enter your College Name")
-        college = other_college if other_college else "Not Provided"
+        primary_college = st.text_input("Enter your Primary College Name")
+        additional_college = st.text_input("Enter Additional College Name (Optional)")
+        if additional_college:
+            college = f"{primary_college}, {additional_college}"
+        else:
+            college = primary_college if primary_college else "Not Provided"
     else:
         college = college_selection
 
