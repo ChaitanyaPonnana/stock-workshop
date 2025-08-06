@@ -94,7 +94,7 @@ with st.form(key='registration_form'):
         college = college_selection
 
     branch = st.selectbox("Branch", [
-        "CSE", "CSD", "CSM", "ECE", "EEE", "MEC", "CIVIL", "CHEMICAL", "OTHER"
+        "CSE", "CSD", "CSM", "IT", "ECE", "EEE", "MEC", "CIVIL", "CHEMICAL", "OTHER"
     ])
     
     year = st.selectbox("Year", ["1st Year", "2nd Year", "3rd Year", "4th Year", "Other"])
