@@ -13,54 +13,48 @@ from PIL import Image
 
 # -------- CONFIG -------- 
 CSV_FILE = "registrations.csv"
-ADMIN_PASSWORD = st.secrets["app"]["admin_password"]
-EMAIL_ADDRESS = st.secrets["email"]["address"]
-EMAIL_PASSWORD = st.secrets["email"]["password"]
+ADMIN_PASSWORD = st.secrets.get("app", {}).get("admin_password", "admin123")
+EMAIL_ADDRESS = st.secrets.get("email", {}).get("address", "your_email@example.com")
+EMAIL_PASSWORD = st.secrets.get("email", {}).get("password", "your_password")
 WHATSAPP_LINK = "https://chat.whatsapp.com/KpkyyyevxqmFOnkaZUsTo2"
 
 # -------- BACKGROUND FUNCTION --------
 def set_background(image_file):
     """Set a background image for the app."""
-    try:
-        with open(image_file, "rb") as f:
-            data = f.read()
-        encoded = base64.b64encode(data).decode()
-        st.markdown(
-            f"""
-            <style>
-            .stApp {{
-                background-image: url("data:image/png;base64,{encoded}");
-                background-size: cover;
-                background-repeat: no-repeat;
-                background-attachment: fixed;
-                color: white;
-            }}
-            .stTextInput>div>div>input,
-            .stSelectbox>div>div>select,
-            .stTextArea>div>div>textarea {{
-                background-color: rgba(0, 0, 0, 0.6);
-                color: white;
-            }}
-            section[data-testid="stSidebar"] {{
-                background-color: rgba(0, 0, 0, 0.8);
-                color: white;
-            }}
-            .stSuccess, .stError, .stWarning {{
-                background-color: rgba(0,0,0,0.7) !important;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-    except FileNotFoundError:
+    if not os.path.exists(image_file):
         st.warning("Background image not found. Please make sure the file exists.")
+        return
+    with open(image_file, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode()
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/png;base64,{encoded}");
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            color: white;
+        }}
+        .stTextInput>div>div>input,
+        .stSelectbox>div>div>select,
+        .stTextArea>div>div>textarea {{
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+        }}
+        section[data-testid="stSidebar"] {{
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-# ✅ Call background before rendering
 set_background("background.png")
 
 # -------- FUNCTIONS --------
 def generate_registration_id():
-    """Generate a unique registration ID."""
     letters = ''.join(random.choices(string.ascii_uppercase, k=3))
     numbers = ''.join(random.choices(string.digits, k=3))
     return f"REG-{letters}{numbers}"
@@ -136,14 +130,14 @@ def registration_page():
         email = st.text_input("Email Address")
         phone = st.text_input("Phone Number")
 
-        # College selection
         college_choice = st.selectbox("College", [
             "",
             "Anil Neerukonda Institute of Technology and Sciences (ANITS)",
             "Other"
         ])
         if college_choice == "Other":
-            college = st.text_input("Enter Your College Name").strip().title()
+            other_college = st.text_input("Enter Your College Name").strip()
+            college = other_college.title() if other_college else ""
         else:
             college = college_choice
 
@@ -185,7 +179,6 @@ def registration_page():
         st.session_state["user_email"] = email
         st.session_state["user_name"] = name
         st.session_state["payment_confirmed"] = False
-        st.session_state["show_proceed"] = False
         st.session_state["thank_you"] = False
         st.rerun()
 
@@ -233,9 +226,9 @@ def payment_page():
 
     try:
         qr_image = Image.open("payment_qr.jpg")
-        st.image(qr_image, caption="Scan to Pay", use_container_width=False, width=300)
+        st.image(qr_image, caption="Scan to Pay", width=300)
     except FileNotFoundError:
-        st.error("QR code image not found. Please upload 'payment_qr.jpg' to your repo.")
+        st.error("QR code image not found. Please upload 'payment_qr.jpg'.")
 
     transaction_id = st.text_input("Enter UPI Transaction Id (12 digits only)", max_chars=12)
 
@@ -254,9 +247,8 @@ def payment_page():
                             st.session_state["thank_you"] = True
                         else:
                             st.error("❌ Failed to send registration email.")
-
-                        del st.session_state["user_email"]
-                        del st.session_state["user_name"]
+                        st.session_state.pop("user_email", None)
+                        st.session_state.pop("user_name", None)
 
                     st.session_state["payment_confirmed"] = True
                     st.rerun()
@@ -291,8 +283,6 @@ if "registered" not in st.session_state:
     st.session_state["registered"] = False
 if "payment_confirmed" not in st.session_state:
     st.session_state["payment_confirmed"] = False
-if "show_proceed" not in st.session_state:
-    st.session_state["show_proceed"] = False
 if "thank_you" not in st.session_state:
     st.session_state["thank_you"] = False
 
