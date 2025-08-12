@@ -1,39 +1,83 @@
 import streamlit as st
 import pandas as pd
 import os
+import time
+import random
+import string
+import base64
+from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+from PIL import Image
 
-# --------- CONFIGURATION ---------
+# -------- CONFIG -------- 
 CSV_FILE = "registrations.csv"
-WHATSAPP_LINK = "https://chat.whatsapp.com/KpkyyyevxqmFOnkaZUsTo2?mode=ac_t"
-QR_CODE_IMAGE = "screenshots/QR-CODE.jpg"
+ADMIN_PASSWORD = st.secrets["app"]["admin_password"]
+EMAIL_ADDRESS = st.secrets["email"]["address"]
+EMAIL_PASSWORD = st.secrets["email"]["password"]
+WHATSAPP_LINK = "https://chat.whatsapp.com/KpkyyyevxqmFOnkaZUsTo2"
 
-EMAIL_ADDRESS = "your_email@gmail.com"
-EMAIL_PASSWORD = "your_app_password"  # Use app password if 2FA is enabled
+# -------- BACKGROUND FUNCTION --------
+def set_background(image_file):
+    """Set a background image for the app."""
+    try:
+        with open(image_file, "rb") as f:
+            data = f.read()
+        encoded = base64.b64encode(data).decode()
+        st.markdown(
+            f"""
+            <style>
+            .stApp {{
+                background-image: url("data:image/png;base64,{encoded}");
+                background-size: cover;
+                background-repeat: no-repeat;
+                background-attachment: fixed;
+                color: white;
+            }}
+            .stTextInput>div>div>input,
+            .stSelectbox>div>div>select,
+            .stTextArea>div>div>textarea {{
+                background-color: rgba(0, 0, 0, 0.6);
+                color: white;
+            }}
+            section[data-testid="stSidebar"] {{
+                background-color: rgba(0, 0, 0, 0.8);
+                color: white;
+            }}
+            .stSuccess, .stError, .stWarning {{
+                background-color: rgba(0,0,0,0.7) !important;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+    except FileNotFoundError:
+        st.warning("Background image not found. Please make sure the file exists.")
 
-# --------- INITIALIZE FILE ---------
-if not os.path.exists(CSV_FILE):
-    df_init = pd.DataFrame(columns=[
-        "Name", "Email", "Phone", "College", "Branch", "Year",
-        "Timestamp", "Payment Screenshot"
-    ])
-    df_init.to_csv(CSV_FILE, index=False)
+# ✅ Call background before rendering
+set_background("background.png")
 
-# --------- FUNCTIONS ---------
-def send_confirmation_email(to_email, name):
+# -------- FUNCTIONS --------
+def generate_registration_id():
+    """Generate a unique registration ID."""
+    letters = ''.join(random.choices(string.ascii_uppercase, k=3))
+    numbers = ''.join(random.choices(string.digits, k=3))
+    return f"REG-{letters}{numbers}"
+
+def send_confirmation_email(to_email, name, reg_id):
     subject = "Workshop Registration Confirmation"
-    body = f"""Hi {name},
+    body = f"""
+Hi {name},
 
 Thank you for registering for the Stock Market Workshop.
-
 We have received your registration successfully.
 
-Regards,  
-Workshop Team"""
+Your Registration ID is: {reg_id}
 
+Regards,
+Workshop Team
+"""
     msg = MIMEMultipart()
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = to_email
@@ -47,71 +91,82 @@ Workshop Team"""
             server.send_message(msg)
         return True
     except Exception as e:
-        st.error(f"Error sending email: {e}")
+        st.error(f"Error sending confirmation email: {e}")
         return False
 
 def save_registration(data: dict):
     df = pd.DataFrame([data])
-    df.to_csv(CSV_FILE, mode='a', header=False, index=False)
+    if os.path.exists(CSV_FILE):
+        try:
+            existing_df = pd.read_csv(CSV_FILE)
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+            combined_df.to_csv(CSV_FILE, index=False)
+        except pd.errors.EmptyDataError:
+            df.to_csv(CSV_FILE, index=False)
+    else:
+        df.to_csv(CSV_FILE, index=False)
 
 def get_registration_count():
     if os.path.exists(CSV_FILE):
-        df = pd.read_csv(CSV_FILE)
-        return len(df)
+        try:
+            df = pd.read_csv(CSV_FILE)
+            return len(df)
+        except pd.errors.EmptyDataError:
+            return 0
     return 0
 
-# --------- STREAMLIT UI ---------
-st.set_page_config(page_title="Stock Market Workshop", layout="centered")
-st.title("📈 Stock Market Workshop Registration")
+def delete_all_registrations():
+    if os.path.exists(CSV_FILE):
+        os.remove(CSV_FILE)
+        return True
+    return False
 
-st.markdown("Please fill the form below to register for the workshop.")
+# -------- PAGES --------
+def registration_page():
+    st.title("📈 Stock Market Workshop Registration")
+    st.markdown(
+        "<div style='background-color:rgba(255, 215, 0, 0.7); padding:10px; border-radius:5px; color:black; font-weight:bold;'>"
+        "⚠ Once you submit the form, your details cannot be changed. Please check carefully before registering."
+        "</div>",
+        unsafe_allow_html=True
+    )
 
-# Display QR Code
-if os.path.exists(QR_CODE_IMAGE):
-    st.image(QR_CODE_IMAGE, caption="📲 Scan to Pay via PhonePe", width=250)
-else:
-    st.warning("⚠️ QR Code not found. Please upload it to 'screenshots/QR-CODE.jpg'")
+    with st.form(key='registration_form'):
+        name = st.text_input("Full Name", max_chars=50)
+        email = st.text_input("Email Address")
+        phone = st.text_input("Phone Number")
 
-# Registration Form
-with st.form(key='registration_form'):
-    name = st.text_input("Full Name", max_chars=50)
-    email = st.text_input("Email Address")
-    phone = st.text_input("Phone Number")
-
-    college_selection = st.selectbox("College / Institution", [
-        "ANIL NEERUKONDA INSTITUTE OF TECHNOLOGY AND SCIENCES", "OTHER"
-    ])
-
-    # Show textboxes if college is "OTHER"
-    if college_selection == "OTHER":
-        primary_college = st.text_input("Enter your Primary College Name")
-        additional_college = st.text_input("Enter Additional College Name (Optional)")
-        if additional_college:
-            college = f"{primary_college}, {additional_college}"
+        # College selection
+        college_choice = st.selectbox("College", [
+            "",
+            "Anil Neerukonda Institute of Technology and Sciences (ANITS)",
+            "Other"
+        ])
+        if college_choice == "Other":
+            college = st.text_input("Enter Your College Name").strip().title()
         else:
-            college = primary_college if primary_college else "Not Provided"
-    else:
-        college = college_selection
+            college = college_choice
 
-    branch = st.selectbox("Branch", [
-        "CSE", "CSD", "CSM", "IT", "ECE", "EEE", "MEC", "CIVIL", "CHEMICAL", "OTHER"
-    ])
-    
-    year = st.selectbox("Year", ["1st Year", "2nd Year", "3rd Year", "4th Year", "Other"])
-    payment_screenshot = st.file_uploader("Upload your payment screenshot (PNG/JPG)", type=["png", "jpg", "jpeg"])
-    submit = st.form_submit_button("Register")
+        branch = st.selectbox("Branch", ["", "CSE", "ECE", "EEE", "MECH", "CIVIL", "IT", "CSD", "CSM", "CHEM"])
+        year = st.selectbox("Year", ["", "1st Year", "2nd Year", "3rd Year", "4th Year"])
+        submit = st.form_submit_button("Submit")
 
-if submit:
-    if not (name and email and phone and college and branch and year and payment_screenshot):
-        st.error("🚫 Please fill all fields and upload payment screenshot before submitting.")
-    else:
-        # Save screenshot
-        os.makedirs("screenshots", exist_ok=True)
-        file_path = os.path.join("screenshots", f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{payment_screenshot.name}")
-        with open(file_path, "wb") as f:
-            f.write(payment_screenshot.getbuffer())
+    if submit:
+        if not all([name, email, phone, college, branch, year]):
+            st.error("⚠ Please fill all fields before submitting.")
+            return
 
-        # Save registration details
+        if os.path.exists(CSV_FILE):
+            try:
+                df = pd.read_csv(CSV_FILE)
+                if email.strip().lower() in df['Email'].str.lower().values:
+                    st.error("⚠ This email is already registered. Please use a different email.")
+                    return
+            except pd.errors.EmptyDataError:
+                pass
+
+        reg_id = generate_registration_id()
+
         registration_data = {
             "Name": name,
             "Email": email,
@@ -119,20 +174,136 @@ if submit:
             "College": college,
             "Branch": branch,
             "Year": year,
-            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Payment Screenshot": file_path
+            "Registration ID": reg_id,
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         save_registration(registration_data)
+        st.session_state["reg_id"] = reg_id
+        st.success("✅ Submission successful... You are being directed to payment section")
+        time.sleep(3)
+        st.session_state["registered"] = True
+        st.session_state["user_email"] = email
+        st.session_state["user_name"] = name
+        st.session_state["payment_confirmed"] = False
+        st.session_state["show_proceed"] = False
+        st.session_state["thank_you"] = False
+        st.rerun()
 
-        # Send confirmation email
-        email_sent = send_confirmation_email(email, name)
-        if email_sent:
-            st.success("✅ Registration successful! Confirmation email sent.")
+def admin_page():
+    st.title("🔑 Admin Panel")
+    password = st.text_input("Enter Admin Password", type="password")
+
+    if password == ADMIN_PASSWORD:
+        st.success(f"✅ Total Registered Participants: {get_registration_count()}")
+
+        if os.path.exists(CSV_FILE):
+            try:
+                df = pd.read_csv(CSV_FILE)
+                st.dataframe(df)
+
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Registrations CSV",
+                    data=csv,
+                    file_name="registrations.csv",
+                    mime="text/csv"
+                )
+
+                st.subheader("🗑 Delete All Registrations")
+                confirm_password = st.text_input("Re-enter Admin Password to Confirm Deletion:", type="password", key="delete_confirm")
+                if st.button("⚠ Confirm Delete", type="primary"):
+                    if confirm_password == ADMIN_PASSWORD:
+                        if delete_all_registrations():
+                            st.success("✅ All registration data has been deleted.")
+                            st.rerun()
+                        else:
+                            st.info("No registration data found.")
+                    else:
+                        st.error("❌ Incorrect password. Deletion cancelled.")
+            except pd.errors.EmptyDataError:
+                st.info("No registrations yet.")
         else:
-            st.warning("⚠️ Registered, but failed to send confirmation email.")
+            st.info("No registrations yet.")
+    elif password:
+        st.error("Incorrect password")
 
-        # Show WhatsApp group link
-        st.markdown(f"📱 *Join the WhatsApp group here:* [Click to Join]({WHATSAPP_LINK})")
+def payment_page():
+    st.title("💳 Payment Section")
+    st.write("Please scan the QR code below to make your payment:")
 
-st.markdown("---")
-st.markdown(f"### 🧾 Total Registered Participants (Paid): **{get_registration_count()}**")
+    try:
+        qr_image = Image.open("payment_qr.jpg")
+        st.image(qr_image, caption="Scan to Pay", use_container_width=False, width=300)
+    except FileNotFoundError:
+        st.error("QR code image not found. Please upload 'payment_qr.jpg' to your repo.")
+
+    transaction_id = st.text_input("Enter UPI Transaction Id (12 digits only)", max_chars=12)
+
+    if not st.session_state.get("payment_confirmed", False):
+        uploaded_file = st.file_uploader("Upload payment screenshot here", type=["png", "jpg", "jpeg"])
+        if uploaded_file is not None:
+            st.image(uploaded_file, caption="Uploaded payment screenshot", use_container_width=True)
+            if st.button("Proceed"):
+                if not (transaction_id.isdigit() and len(transaction_id) == 12):
+                    st.error("⚠ Please enter a valid 12-digit numeric UPI Transaction Id before proceeding.")
+                else:
+                    if "user_email" in st.session_state and "user_name" in st.session_state:
+                        reg_id = st.session_state.get("reg_id", generate_registration_id())
+                        sent = send_confirmation_email(st.session_state["user_email"], st.session_state["user_name"], reg_id)
+                        if sent:
+                            st.session_state["thank_you"] = True
+                        else:
+                            st.error("❌ Failed to send registration email.")
+
+                        del st.session_state["user_email"]
+                        del st.session_state["user_name"]
+
+                    st.session_state["payment_confirmed"] = True
+                    st.rerun()
+    else:
+        st.info("You have already completed payment and registration.")
+
+def thank_you_page():
+    st.markdown(
+        "<h1 style='text-align:center; font-size:60px; color:gold;'>🎉 THANK YOU! 🎉</h1>",
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        "<h3 style='text-align:center; color:white;'>Registration Successful... Details have been sent to your mail.</h3>",
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        f"""
+        <div style="text-align:center; margin-top:30px;">
+            <a href="{WHATSAPP_LINK}" target="_blank" 
+               style="background-color:#25D366; color:white; padding:15px 30px; 
+                      text-decoration:none; font-size:20px; border-radius:8px; 
+                      display:inline-block;">
+                📲 Join WhatsApp Group
+            </a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# -------- APP NAVIGATION --------
+if "registered" not in st.session_state:
+    st.session_state["registered"] = False
+if "payment_confirmed" not in st.session_state:
+    st.session_state["payment_confirmed"] = False
+if "show_proceed" not in st.session_state:
+    st.session_state["show_proceed"] = False
+if "thank_you" not in st.session_state:
+    st.session_state["thank_you"] = False
+
+menu = st.sidebar.radio("Select Mode", ["Register", "Admin"])
+
+if menu == "Register":
+    if st.session_state["thank_you"]:
+        thank_you_page()
+    elif st.session_state["registered"]:
+        payment_page()
+    else:
+        registration_page()
+elif menu == "Admin":
+    admin_page()
